@@ -1,38 +1,60 @@
-name: iabd-hadoop
+name: UD01Sesion11Laboratorio
 
 services:
-  hadoop:
-    build:
-      context: ./hadoop
-    image: iabd/hadoop-lab:3.4.0
-    container_name: hadoop-lab
-    hostname: hadoop-lab
+  namenode:
+    image: apache/hadoop:3.4.0
+    container_name: lab-namenode
+    hostname: namenode
+    command: ["hdfs", "namenode"]
     ports:
       - "9870:9870"   # NameNode Web UI
-      - "8088:8088"   # YARN ResourceManager Web UI
-      - "9864:9864"   # DataNode Web UI
-    volumes:
-      - ./datos:/workspace          # CSV compartidos con el equipo anfitrión
-      - hdfs-data:/hadoop/dfs       # persistencia de HDFS entre reinicios
-    healthcheck:
-      test: ["CMD-SHELL", "hdfs dfsadmin -safemode get | grep -q 'Safe mode is OFF'"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 40s
-    restart: unless-stopped
-
-  # Bloque A (opcional): Python + pandas para sanear el CSV.
-  # Se arranca solo a demanda:  docker compose --profile bloque-a run --rm python bash
-  python:
-    image: python:3.12-slim
-    container_name: python-lab
-    profiles: ["bloque-a"]
-    working_dir: /scripts
+      - "8020:8020"
+    environment:
+      ENSURE_NAMENODE_DIR: "/tmp/hadoop-hadoop/dfs/name"
+      CORE-SITE.XML_fs.defaultFS: "hdfs://namenode:8020"
+      HDFS-SITE.XML_dfs.namenode.rpc-address: "namenode:8020"
+      HDFS-SITE.XML_dfs.replication: "1"
     volumes:
       - ./datos:/workspace
-      - ./scripts:/scripts
-    command: ["sleep", "infinity"]
+    networks: [lab]
 
-volumes:
-  hdfs-data:
+  datanode:
+    image: apache/hadoop:3.4.0
+    container_name: lab-datanode
+    hostname: datanode
+    command: ["hdfs", "datanode"]
+    depends_on: [namenode]
+    environment:
+      CORE-SITE.XML_fs.defaultFS: "hdfs://namenode:8020"
+      HDFS-SITE.XML_dfs.namenode.rpc-address: "namenode:8020"
+      HDFS-SITE.XML_dfs.replication: "1"
+    networks: [lab]
+
+  resourcemanager:
+    image: apache/hadoop:3.4.0
+    container_name: lab-resourcemanager
+    hostname: resourcemanager
+    command: ["yarn", "resourcemanager"]
+    ports:
+      - "8088:8088"   # YARN ResourceManager Web UI
+    environment:
+      CORE-SITE.XML_fs.defaultFS: "hdfs://namenode:8020"
+      YARN-SITE.XML_yarn.resourcemanager.hostname: "resourcemanager"
+      YARN-SITE.XML_yarn.nodemanager.aux-services: "mapreduce_shuffle"
+    networks: [lab]
+
+  nodemanager:
+    image: apache/hadoop:3.4.0
+    container_name: lab-nodemanager
+    hostname: nodemanager
+    command: ["yarn", "nodemanager"]
+    depends_on: [resourcemanager]
+    environment:
+      CORE-SITE.XML_fs.defaultFS: "hdfs://namenode:8020"
+      YARN-SITE.XML_yarn.resourcemanager.hostname: "resourcemanager"
+      YARN-SITE.XML_yarn.nodemanager.aux-services: "mapreduce_shuffle"
+    networks: [lab]
+
+networks:
+  lab:
+    driver: bridge
